@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name CustomParts)(type Legacy)(uri /Users/gabor/DevMac/Makery/Clock/electronics/CustomParts/CustomParts.lib)(options "")(descr ""))
+)

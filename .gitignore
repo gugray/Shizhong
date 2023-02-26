@@ -1,0 +1,7 @@
+# MacOS
+.DS_Store
+
+# KiCad
+fp-info-cache
+*.sch-bak
+
