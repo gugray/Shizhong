@@ -21,7 +21,7 @@ private:
   uint8_t _addr;
 
 public:
-  uint8_t _buffer[7];
+  uint8_t buffer[7];
   bool auto_write = true;
 
 public:

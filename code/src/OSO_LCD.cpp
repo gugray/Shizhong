@@ -65,7 +65,7 @@ const PROGMEM uint8_t CHARS[] = {
 
 OSO_LCD::OSO_LCD(void)
 {
-  memset(this->_buffer, 0, 7);
+  memset(this->buffer, 0, 7);
 }
 
 bool OSO_LCD::begin(uint8_t _addr)
@@ -79,14 +79,14 @@ bool OSO_LCD::begin(uint8_t _addr)
 
 void OSO_LCD::show(void)
 {
-  _write(this->_buffer, 7);
+  _write(this->buffer, 7);
 }
 
 void OSO_LCD::fill(bool on)
 {
   for (int i = 0; i < 6; i++)
   {
-    this->_buffer[i + 1] = on ? 0xFF : 0x00;
+    this->buffer[i + 1] = on ? 0xFF : 0x00;
   }
   if (this->auto_write)
     this->show();
@@ -106,10 +106,10 @@ void OSO_LCD::_write(const uint8_t *buffer, size_t len)
 
 void OSO_LCD::_set_buffer(uint8_t pos, uint8_t value)
 {
-  this->_buffer[pos + 1] = value;
+  this->buffer[pos + 1] = value;
 }
 
 uint8_t OSO_LCD::_get_buffer(uint8_t pos)
 {
-  return this->_buffer[pos + 1];
+  return this->buffer[pos + 1];
 }
