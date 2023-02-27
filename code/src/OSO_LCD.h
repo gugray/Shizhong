@@ -3,7 +3,7 @@
 
 #include "Arduino.h"
 
-extern const PROGMEM uint8_t CHARS[];
+extern const uint8_t digits[];
 
 #define OSO_INDICATOR_AM      (0b10000000)
 #define OSO_INDICATOR_PM      (0b01000000)
@@ -28,7 +28,7 @@ public:
   OSO_LCD(void);
   bool begin(uint8_t _addr = 0x3e);
   void show(void);
-  void show_partial(uint8_t length, uint8_t pos = 0);
+  void show_partial(uint8_t pos, uint8_t length);
   void fill(bool on);
 
 private:
