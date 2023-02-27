@@ -1,0 +1,13 @@
+TO-DO
+=====================================
+
+
+
+Batery capacity ballpark
+=====================================
+CR2032 conservative capacity: 200mAh
+At 50uA:  4000h, or 23 weeks
+At 20uA: 10000h, or 59 weeks
+CR2: 800mAh
+At 50uA: 16000h, or 95 weeks
+

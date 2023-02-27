@@ -1,7 +1,9 @@
-#ifndef OSO_LCD_h
-#define OSO_LCD_h
+#ifndef OSO_LCD_H
+#define OSO_LCD_H
 
 #include "Arduino.h"
+
+#define OSO_LCD_I2C_ADDR 0x3e
 
 extern const uint8_t digits[];
 
@@ -17,25 +19,19 @@ extern const uint8_t digits[];
 
 class OSO_LCD
 {
-private:
-  uint8_t _addr;
-
 public:
   uint8_t buffer[7];
-  bool auto_write = true;
 
 public:
-  OSO_LCD(void);
-  bool begin(uint8_t _addr = 0x3e);
-  void show(void);
+  OSO_LCD();
+  bool begin();
+  void show();
   void show_partial(uint8_t pos, uint8_t length);
   void fill(bool on);
 
 private:
   void _write(const uint8_t *buffer, size_t len);
   void _write_cmd(uint8_t cmd);
-  void _set_buffer(uint8_t pos, uint8_t value);
-  uint8_t _get_buffer(uint8_t pos);
 };
 
-#endif // OSO_LCD_h
+#endif
