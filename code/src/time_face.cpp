@@ -3,28 +3,28 @@
 #include "events.h"
 #include "globals.h"
 
-uint8_t val = 0;
-
-void TimeFace::loop(uint16_t event)
+void TimeFace::enter()
 {
-  // if ((event & EVT_SECOND_TICK) != 0)
-  //   drawTime(false);
+  drawTime(true);
+}
 
-  if ((event & EVT_BTN_PLUS_DOWN) != 0 || (event & EVT_BTN_PLUS_REPEAT) != 0)
-  {
-    val = (val + 1) % 100;
-    lcd.buffer[2] = digits[val / 10];
-    lcd.buffer[3] = digits[val % 10];
-    lcd.show();
-  }
+uint8_t TimeFace::loop(uint16_t event)
+{
+  uint8_t ret = RET_STAY;
+
+  if ((event & EVT_SECOND_TICK) != 0)
+    drawTime(false);
+
+  if ((event & EVT_BTN_MODE_SHORT))
+    ret = RET_NEXT;
+
+  return ret;
 }
 
 void TimeFace::drawTime(bool forceRedraw)
 {
-  if (countSeconds)
-    forceRedraw = true;
   bool minChanged = forceRedraw || time.min != prevTime.min;
-  bool secHiChanged = forceRedraw || time.sec / 10 != prevTime.sec / 10;
+  bool quartMinChanged = forceRedraw || time.sec / 15 != prevTime.sec / 15;
 
   // Update full time if minute has changed
   // Could save some more updating, but because colon is at start of buffer,
@@ -44,20 +44,18 @@ void TimeFace::drawTime(bool forceRedraw)
     lcd.buffer[5] = digits[minLo];
   }
 
-  // Last digit: symbols for 10-seconds
-  if (!countSeconds && secHiChanged)
+  // Last digit: quarter-minute circle at top
+  if (quartMinChanged)
   {
-    uint8_t secHi = time.sec / 10;
-    uint8_t secVal = secHi == 0 ? 0 : 0b00100000; // Dot
-    for (uint8_t i = 1; i <= secHi; ++i)
-      secVal |= digits[i + 9];
+    uint8_t q = time.sec / 15;
+    uint8_t secVal = 0b10000000; // top
+    if (q >= 1)
+      secVal |= 0b00001000;
+    if (q >= 2)
+      secVal |= 0b00000010;
+    if (q >= 3)
+      secVal |= 0b01000000;
     lcd.buffer[6] = secVal;
-  }
-  // Last digit: secLo
-  if (countSeconds)
-  {
-    uint8_t secLo = time.sec % 10;
-    lcd.buffer[6] = digits[secLo];
   }
 
   // Colon on/off
@@ -69,7 +67,7 @@ void TimeFace::drawTime(bool forceRedraw)
     // Update colon
     lcd.show_partial(1, 1);
     // Less often, update seconds symbol too
-    if (secHiChanged)
+    if (quartMinChanged)
       lcd.show_partial(6, 1);
   }
   // Minute has changed: update whole display

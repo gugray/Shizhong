@@ -2,6 +2,7 @@
 #include "globals.h"
 #include "events.h"
 #include "time_face.h"
+#include "set_face.h"
 
 // Definitions of globals
 OSO_LCD lcd;
@@ -10,14 +11,19 @@ Time prevTime;
 
 // Local vars
 volatile uint16_t wakeEventMask = 0;
+
+// 0: time; 1: set; 2: tune
+volatile uint8_t faceIx = 0;
 TimeFace timeFace;
+SetFace setFace;
+
 
 // ========= Buttons =======
 // Will move to its own file
 // =========================
 
 #define LONG_PRESS_TICKS 44
-#define REPEAT_TICKS 4
+#define REPEAT_TICKS 8
 
 volatile bool timer0Running = false;
 volatile uint16_t counter0 = 0;
@@ -97,6 +103,9 @@ void stopTimer0()
 
 void setupTimer0()
 {
+  if (timer0Running == true)
+    return;
+
   counter0 = 0;
   timer0Running = true;
   TCNT0 = 0;                          // clear Timer 2 counter
@@ -113,7 +122,8 @@ ISR(TIMER0_COMPA_vect)
 {
   ++counter0;
   bool stopTimer = updateButtons();
-  if (stopTimer)
+  // Faces that need the quick tick
+  if (stopTimer && faceIx == 0)
     stopTimer0();
   wakeEventMask |= EVT_QUICK_TICK;
 }
@@ -121,8 +131,6 @@ ISR(TIMER0_COMPA_vect)
 ISR(PCINT1_vect)
 {
   // If timer 0 is not running, start it
-  if (timer0Running)
-    return;
   setupTimer0();
 }
 
@@ -140,15 +148,11 @@ void setup()
   digitalWrite(LED_PIN, LOW);
   pinMode(LED_PIN, OUTPUT);
 
-  // DBG
-  timeFace.countSeconds = true;
-
   lcd.begin();
-  timeFace.drawTime(true);
+  timeFace.enter();
 
   stopTimer0();
   setupButtons();
-  // setupTimer0();
 
   setupTimer2();
   setupLowPower();
@@ -169,7 +173,27 @@ void loop()
     sei();
     if (eventMask == 0)
       break;
-    timeFace.loop(eventMask);
+
+    uint8_t ret;
+    if (faceIx == 0)
+    {
+      ret = timeFace.loop(eventMask);
+      if (ret == RET_NEXT)
+      {
+        faceIx = 1;
+        setFace.enter();
+        setupTimer0();
+      }
+    }
+    else if (faceIx == 1)
+    {
+      ret = setFace.loop(eventMask);
+      if (ret != RET_STAY)
+      {
+        faceIx = 0;
+        timeFace.enter();
+      }
+    }
   }
   powerSave();
 }
