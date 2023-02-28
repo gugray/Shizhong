@@ -11,3 +11,9 @@ At 20uA: 10000h, or 59 weeks
 CR2: 800mAh
 At 50uA: 16000h, or 95 weeks
 
+Baseline sleep cycle, with no LCD update: 12.5uA
+Spikes to ~40uA for update
+
+Power draw with sleep to IDLE and no LCD refresh, Timer 0 as default: 400uA
+Strangely, turning off Timer 0 only brings it down to 396uA
+With my Timer0: 600uA

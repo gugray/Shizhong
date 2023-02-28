@@ -9,8 +9,8 @@ extern Time time;
 extern Time prevTime;
 
 #define LED_PIN 3
-#define BTN_UP_PIN 17
-#define BTN_DOWN_PIN 16
 #define BTN_MODE_PIN 14
+#define BTN_PLUS_PIN 16
+#define BTN_MINUS_PIN 17
 
 #endif

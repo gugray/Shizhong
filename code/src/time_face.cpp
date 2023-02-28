@@ -3,10 +3,20 @@
 #include "events.h"
 #include "globals.h"
 
-void TimeFace::loop(uint8_t event)
+uint8_t val = 0;
+
+void TimeFace::loop(uint16_t event)
 {
-  if (event == TICK_EVENT)
-    drawTime(false);
+  // if ((event & EVT_SECOND_TICK) != 0)
+  //   drawTime(false);
+
+  if ((event & EVT_BTN_PLUS_DOWN) != 0 || (event & EVT_BTN_PLUS_REPEAT) != 0)
+  {
+    val = (val + 1) % 100;
+    lcd.buffer[2] = digits[val / 10];
+    lcd.buffer[3] = digits[val % 10];
+    lcd.show();
+  }
 }
 
 void TimeFace::drawTime(bool forceRedraw)

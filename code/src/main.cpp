@@ -9,12 +9,129 @@ Time time;
 Time prevTime;
 
 // Local vars
-uint8_t wakeEvent = 0;
+volatile uint16_t wakeEventMask = 0;
 TimeFace timeFace;
 
+// ========= Buttons =======
+// Will move to its own file
+// =========================
+
+#define LONG_PRESS_TICKS 44
+#define REPEAT_TICKS 4
+
+volatile bool timer0Running = false;
+volatile uint16_t counter0 = 0;
+volatile uint16_t btnModePressedAt = 0xffff;
+volatile uint16_t btnPlusPressedAt = 0xffff;
+volatile uint16_t btnMinusPressedAt = 0xffff;
+
+void updateOneButton(volatile uint16_t *pressedAt, uint8_t pin, uint16_t downEventFlag)
+{
+  // Button is currently pressed
+  if (digitalRead(pin) == LOW)
+  {
+    // Not pressed before
+    if (*pressedAt == 0xffff)
+    {
+      *pressedAt = counter0;
+      wakeEventMask |= downEventFlag; // DOWN
+    }
+    // Was already pressed
+    else
+    {
+      uint16_t elapsed = counter0 - *pressedAt;
+      // This is a long press: send once
+      if (elapsed == LONG_PRESS_TICKS)
+      {
+        wakeEventMask |= (downEventFlag << 3); // LONG
+        // This is also the first repeat
+        wakeEventMask |= (downEventFlag << 1); // REPEAT
+      }
+      else if (elapsed > LONG_PRESS_TICKS && (elapsed - LONG_PRESS_TICKS) % REPEAT_TICKS == 0)
+      {
+        wakeEventMask |= (downEventFlag << 1); // REPEAT
+      }
+    }
+  }
+  // Button is currently not pressed
+  else
+  {
+    // Was pressed before
+    if (*pressedAt != 0xffff)
+    {
+      // Was it a short press?
+      // In the other case, we will have sent out a long press event before
+      if (counter0 - *pressedAt < LONG_PRESS_TICKS)
+        wakeEventMask |= (downEventFlag << 2); // SHORT
+    }
+    *pressedAt = 0xffff;
+  }
+}
+
+bool updateButtons()
+{
+  updateOneButton(&btnModePressedAt, BTN_MODE_PIN, EVT_BTN_MODE_DOWN);
+  updateOneButton(&btnPlusPressedAt, BTN_PLUS_PIN, EVT_BTN_PLUS_DOWN);
+  updateOneButton(&btnMinusPressedAt, BTN_MINUS_PIN, EVT_BTN_MINUS_DOWN);
+
+  // Quit timer if no button is pressed
+  return btnModePressedAt == 0xffff && btnPlusPressedAt == 0xffff && btnMinusPressedAt == 0xffff;
+}
+
+void setupButtons()
+{
+  pinMode(BTN_MODE_PIN, INPUT_PULLUP);
+  pinMode(BTN_PLUS_PIN, INPUT_PULLUP);
+  pinMode(BTN_MINUS_PIN, INPUT_PULLUP);
+  PCMSK1 |= bit(PCINT11) | bit(PCINT10) | bit(PCINT8);
+  PCIFR |= bit(PCIF1);
+  PCICR |= bit(PCIE1);
+}
+
+void stopTimer0()
+{
+  timer0Running = false;
+  TCCR0B = 0; // Stop Timer 0
+  TIMSK0 = 0; // Disable Timer 0 interrupts
+}
+
+void setupTimer0()
+{
+  counter0 = 0;
+  timer0Running = true;
+  TCNT0 = 0;                          // clear Timer 2 counter
+  TCCR0A = (1 << WGM01);              // clear timer on compare match, no port output
+  TCCR0B = (1 << CS02) | (1 << CS00); // prescaler 1024, interrupt enabled.
+                                      // This is from 1 MHz CPU clock! CPU *must* be at 1 MHz.
+                                      // 1MHz / 1024 = 976.5625
+  TIFR0 = 1 << OCF0A;                 // clear compare match A flag
+  OCR0A = 19;                         // reaches 20 about 50x per second
+  TIMSK0 = 1 << OCIE0A;               // enable compare match interrupt
+}
+
+ISR(TIMER0_COMPA_vect)
+{
+  ++counter0;
+  bool stopTimer = updateButtons();
+  if (stopTimer)
+    stopTimer0();
+  wakeEventMask |= EVT_QUICK_TICK;
+}
+
+ISR(PCINT1_vect)
+{
+  // If timer 0 is not running, start it
+  if (timer0Running)
+    return;
+  setupTimer0();
+}
+
+// END button functions
+// ================================================
+
 // Forward declarations of local functions
+void stopTimer0();
 void setupTimer2();
-void setupButtons();
 void setupLowPower();
 void powerSave();
 
@@ -29,6 +146,10 @@ void setup()
   lcd.begin();
   timeFace.drawTime(true);
 
+  stopTimer0();
+  setupButtons();
+  // setupTimer0();
+
   setupTimer2();
   setupLowPower();
 
@@ -38,21 +159,19 @@ void setup()
 
 void loop()
 {
-  if (wakeEvent != 0)
+  uint16_t eventMask;
+  // While we handle one set of events, other interrupts might be setting other events
+  while (true)
   {
-    timeFace.loop(wakeEvent);
+    cli();
+    eventMask = wakeEventMask;
+    wakeEventMask &= ~eventMask;
+    sei();
+    if (eventMask == 0)
+      break;
+    timeFace.loop(eventMask);
   }
   powerSave();
-}
-
-void setupButtons()
-{
-  pinMode(BTN_UP_PIN, INPUT_PULLUP);
-  pinMode(BTN_DOWN_PIN, INPUT_PULLUP);
-  pinMode(BTN_MODE_PIN, INPUT_PULLUP);
-  PCMSK1 |= bit(PCINT11) | bit(PCINT10) | bit(PCINT8);
-  PCIFR |= bit(PCIF1);
-  PCICR |= bit(PCIE1);
 }
 
 void setupLowPower()
@@ -70,38 +189,11 @@ void setupLowPower()
   sei();
 }
 
-uint8_t debounceCounter = 0;
-bool btnUpPressed = false;
-bool btnDownPressed = false;
-bool btnModePressed = false;
-
-ISR(PCINT1_vect)
-{
-  uint8_t lastDC = debounceCounter;
-  debounceCounter = TCNT2;
-  if (lastDC == debounceCounter)
-    return;
-
-  bool oldBtnUpPressed = btnUpPressed;
-  btnUpPressed = digitalRead(BTN_UP_PIN) == LOW;
-  bool oldBtnDownPressed = btnDownPressed;
-  btnDownPressed = digitalRead(BTN_DOWN_PIN) == LOW;
-  bool oldBtnModePressed = btnModePressed;
-  btnModePressed = digitalRead(BTN_MODE_PIN) == LOW;
-
-  if (btnUpPressed && !oldBtnUpPressed)
-    wakeEvent = BTN_UP_PRESS_EVENT;
-  if (btnDownPressed && !oldBtnDownPressed)
-    wakeEvent = BTN_DOWN_PRESS_EVENT;
-  if (btnModePressed && !oldBtnModePressed)
-    wakeEvent = BTN_MODE_PRESS_EVENT;
-}
-
 void setupTimer2()
 {
-  TCCR2B = 0;                         // stop Timer 2
-  TIMSK2 = 0;                         // disable Timer 2 interrupts
-  ASSR = (1 << AS2);                  // select asynchronous operation of Timer 2
+  TCCR2B = 0;        // stop Timer 2
+  TIMSK2 = 0;        // disable Timer 2 interrupts
+  ASSR = (1 << AS2); // select asynchronous operation of Timer 2
 
   // wait for TCN2UB and TCR2BUB to be cleared
   while (ASSR & ((1 << TCN2UB) | (1 << TCR2BUB)))
@@ -124,21 +216,25 @@ ISR(TIMER2_COMPA_vect)
 {
   prevTime = time;
   time.tick();
-  wakeEvent = TICK_EVENT;
+  wakeEventMask |= EVT_SECOND_TICK;
 }
 
 void powerSave()
 {
-  wakeEvent = 0;
-
   // Disable TWI
   TWCR = bit(TWEN) | bit(TWIE) | bit(TWEA) | bit(TWINT);
 
-  SMCR = (1 << SM1) + (1 << SM0); // set sleep mode
+  // set sleep mode: power save by default, but only idle if timer0 is alive
+  if (timer0Running)
+    SMCR = 0;
+  else
+    SMCR = (1 << SM1) + (1 << SM0);
+
   cli();
   SMCR |= (1 << SE); // enable sleep
   sei();
   asm("SLEEP");
+
   // When back: disable sleep
   SMCR &= ~(1 << SE);
 }
