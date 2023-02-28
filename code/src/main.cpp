@@ -23,6 +23,9 @@ void setup()
   digitalWrite(LED_PIN, LOW);
   pinMode(LED_PIN, OUTPUT);
 
+  // DBG
+  timeFace.countSeconds = true;
+
   lcd.begin();
   timeFace.drawTime(true);
 
@@ -99,38 +102,26 @@ void setupTimer2()
   TCCR2B = 0;                         // stop Timer 2
   TIMSK2 = 0;                         // disable Timer 2 interrupts
   ASSR = (1 << AS2);                  // select asynchronous operation of Timer 2
-  TCNT2 = 0;                          // clear Timer 2 counter
-  TCCR2A = 0;                         // normal count up mode, no port output
-  TCCR2B = (1 << CS21) | (1 << CS22); // start timer: prescaler 256
+
+  // wait for TCN2UB and TCR2BUB to be cleared
   while (ASSR & ((1 << TCN2UB) | (1 << TCR2BUB)))
-    ; // wait for TCN2UB and TCR2BUB to be cleared
+    ;
+
+  TCNT2 = 0;                          // clear Timer 2 counter
+  TCCR2A = (1 << WGM21);              // clear timer on compare match, no port output
+  TCCR2B = (1 << CS21) | (1 << CS22); // prescaler 256, interrupt enabled
+
+  // wait for TCN2UB and TCR2BUB to be cleared
+  while (ASSR & ((1 << TCN2UB) | (1 << TCR2BUB)))
+    ;
 
   TIFR2 = 1 << OCF2A;   // clear compare match A flag
   OCR2A = 127;          // reaches 128 once per second
   TIMSK2 = 1 << OCIE2A; // enable compare match interrupt
-
-  // TIFR2 = 1 << TOV2;   // clear overflow flag (done by writing a 1 in this bit)
-  // TIMSK2 = 1 << TOIE2; // enable overflow interrupt
-  TCCR2B = 0;                         // stop Timer 2
-  TIMSK2 = 0;                         // disable Timer 2 interrupts
-  ASSR = (1 << AS2);                  // select asynchronous operation of Timer 2
-  TCNT2 = 0;                          // clear Timer 2 counter
-  TCCR2A = 0;                         // normal count up mode, no port output
-  TCCR2B = (1 << CS21) | (1 << CS22); // start timer: prescaler 256
-  while (ASSR & ((1 << TCN2UB) | (1 << TCR2BUB)))
-    ; // wait for TCN2UB and TCR2BUB to be cleared
-
-  TIFR2 = 1 << OCF2A;   // clear compare match A flag
-  OCR2A = 127;          // reaches 128 once per second
-  TIMSK2 = 1 << OCIE2A; // enable compare match interrupt
-
-  // TIFR2 = 1 << TOV2;   // clear overflow flag (done by writing a 1 in this bit)
-  // TIMSK2 = 1 << TOIE2; // enable overflow interrupt
 }
 
 ISR(TIMER2_COMPA_vect)
 {
-  TCNT2 = 0;
   prevTime = time;
   time.tick();
   wakeEvent = TICK_EVENT;

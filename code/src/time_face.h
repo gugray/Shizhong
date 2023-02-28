@@ -3,6 +3,7 @@
 
 struct TimeFace
 {
+  bool countSeconds = false;
   void loop(uint8_t event);
   void drawTime(bool forceRedraw);
 };

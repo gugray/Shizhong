@@ -11,6 +11,8 @@ void TimeFace::loop(uint8_t event)
 
 void TimeFace::drawTime(bool forceRedraw)
 {
+  if (countSeconds)
+    forceRedraw = true;
   bool minChanged = forceRedraw || time.min != prevTime.min;
   bool secHiChanged = forceRedraw || time.sec / 10 != prevTime.sec / 10;
 
@@ -33,7 +35,7 @@ void TimeFace::drawTime(bool forceRedraw)
   }
 
   // Last digit: symbols for 10-seconds
-  if (secHiChanged)
+  if (!countSeconds && secHiChanged)
   {
     uint8_t secHi = time.sec / 10;
     uint8_t secVal = secHi == 0 ? 0 : 0b00100000; // Dot
@@ -41,8 +43,15 @@ void TimeFace::drawTime(bool forceRedraw)
       secVal |= digits[i + 9];
     lcd.buffer[6] = secVal;
   }
+  // Last digit: secLo
+  if (countSeconds)
+  {
+    uint8_t secLo = time.sec % 10;
+    lcd.buffer[6] = digits[secLo];
+  }
 
-  lcd.buffer[1] = ((time.sec % 2) == 0) ? 0 : OSO_INDICATOR_COLON;
+  // Colon on/off
+  lcd.buffer[1] = ((time.sec % 2) == 0) ? OSO_INDICATOR_COLON : 0;
 
   // Update the least we can
   if (!minChanged)
