@@ -1,8 +1,6 @@
 TO-DO
 =====================================
--- When setting seconds, only blink decimal digit, or colon!
--- Time out from set face
--- Does turning faces into static classes save space?
+-- fine-tune by manipulating TCNT0
 
 
 Batery capacity ballpark

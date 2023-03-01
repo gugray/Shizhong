@@ -3,25 +3,101 @@
 #include "events.h"
 #include "globals.h"
 
+// 0: time; 1: set hour; 2: set minute; 3: set second
+static uint8_t screen;
+static uint8_t buf[7];
+static uint8_t blinkCounter;
+static uint16_t timeoutStart;
+
+static void drawTime(bool forceRedraw);
+static void drawSetTime();
+static void resetSecond();
+
 void TimeFace::enter()
 {
+  screen = 0;
   drawTime(true);
 }
 
 uint8_t TimeFace::loop(uint16_t event)
 {
-  uint8_t ret = RET_STAY;
+  // Events on time screen
+  if (screen == 0)
+  {
+    if (ISEVENT(EVT_SECOND_TICK))
+      drawTime(false);
+    if (ISEVENT(EVT_BTN_MODE_LONG))
+    {
+      screen = 1;
+      faceNeedsQuickTick = true;
+      blinkCounter = 0;
+      timeoutStart = counter0;
+    }
+    if (ISEVENT(EVT_BTN_MODE_SHORT))
+    {
+      return RET_NEXT;
+    }
+    return RET_STAY;
+  }
 
-  if ((event & EVT_SECOND_TICK) != 0)
-    drawTime(false);
-
-  if ((event & EVT_BTN_MODE_SHORT))
-    ret = RET_NEXT;
-
-  return ret;
+  // Events on set screen
+  if (ISEVENT(EVT_BTN_MODE_SHORT) || ISEVENT(EVT_BTN_MODE_LONG))
+  {
+    timeoutStart = counter0;
+    screen = (screen + 1) % 4;
+    if (screen == 0)
+    {
+      drawTime(true);
+      faceNeedsQuickTick = false;
+    }
+    return RET_STAY;
+  }
+  if (ISEVENT(EVT_QUICK_TICK))
+  {
+    blinkCounter = (blinkCounter + 1) % BLINK_PERIOD;
+    if (counter0 - timeoutStart > TIMEOUT_TICKS)
+    {
+      screen = 0;
+      drawTime(true);
+      faceNeedsQuickTick = false;
+      return RET_STAY;
+    }
+  }
+  if (ISEVENT(EVT_BTN_MINUS_DOWN) || ISEVENT(EVT_BTN_MINUS_REPEAT))
+  {
+    timeoutStart = counter0;
+    if (screen == 1)
+      time.hour = time.hour == 0 ? 23 : time.hour - 1;
+    else if (screen == 2)
+      time.min = time.min == 0 ? 59 : time.min - 1;
+    else
+      resetSecond();
+    blinkCounter = BLINK_PERIOD / 2;
+  }
+  if (ISEVENT(EVT_BTN_PLUS_DOWN) || ISEVENT(EVT_BTN_PLUS_REPEAT))
+  {
+    timeoutStart = counter0;
+    if (screen == 1)
+      time.hour = (time.hour + 1) % 24;
+    else if (screen == 2)
+      time.min = (time.min + 1) % 60;
+    else
+      resetSecond();
+    blinkCounter = BLINK_PERIOD / 2;
+  }
+  drawSetTime();
+  return RET_STAY;
 }
 
-void TimeFace::drawTime(bool forceRedraw)
+
+static void resetSecond()
+{
+  time.sec = 0;
+  TIFR2 = 1 << OCF2A; // clear compare match A flag
+  TCNT2 = 0;          // clear Timer 2 counter
+}
+
+static void drawTime(bool forceRedraw)
 {
   bool minChanged = forceRedraw || time.min != prevTime.min;
   bool quartMinChanged = forceRedraw || time.sec / 15 != prevTime.sec / 15;
@@ -73,4 +149,52 @@ void TimeFace::drawTime(bool forceRedraw)
   // Minute has changed: update whole display
   else
     lcd.show();
+}
+
+static void drawSetTime()
+{
+  // "Draw" into new buffer
+  memset(buf, 0, 7);
+
+  // Setting hours or minutes
+  if (screen != 3)
+  {
+    // Draw hours
+    if (screen != 1 || (screen == 1 && blinkCounter >= BLINK_PERIOD / 2))
+    {
+      if (time.hour >= 10)
+        buf[2] = digits[time.hour / 10];
+      buf[3] = digits[time.hour % 10];
+    }
+    // Draw minutes
+    if (screen != 2 || (screen == 2 && blinkCounter >= BLINK_PERIOD / 2))
+    {
+      buf[4] = digits[time.min / 10];
+      buf[5] = digits[time.min % 10];
+    }
+    // Colon on/off
+    buf[1] = ((time.sec % 2) == 0) ? OSO_INDICATOR_COLON : 0;
+  }
+  // Setting seconds
+  else
+  {
+    // Minutes on the left
+    buf[2] = digits[time.min / 10];
+    buf[3] = digits[time.min % 10];
+    // Seconds on the right, unless blinked hidden
+    if (blinkCounter >= BLINK_PERIOD / 2)
+    {
+      buf[5] = digits[time.sec / 10];
+      buf[6] = digits[time.sec % 10];
+    }
+    // With decimal digit in front
+    buf[5] |= 0b00100000;
+  }
+
+  // Flush if different
+  if (memcmp(buf, lcd.buffer, 7) != 0)
+  {
+    memcpy(lcd.buffer, buf, 7);
+    lcd.show();
+  }
 }

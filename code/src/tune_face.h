@@ -1,7 +1,7 @@
-#ifndef TIME_FACE_H
-#define TIME_FACE_H
+#ifndef TUNE_FACE_H
+#define TUNE_FACE_H
 
-struct TimeFace
+struct TuneFace
 {
   static void enter();
   static uint8_t loop(uint16_t event);

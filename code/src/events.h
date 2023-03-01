@@ -19,6 +19,8 @@
 #define EVT_BTN_MINUS_SHORT 0x2000
 #define EVT_BTN_MINUS_LONG 0x4000
 
+#define ISEVENT(EVT) (event & EVT) != 0
+
 #define RET_STAY 1
 #define RET_NEXT 2
 #define RET_HOME 3

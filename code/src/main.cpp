@@ -2,34 +2,154 @@
 #include "globals.h"
 #include "events.h"
 #include "time_face.h"
-#include "set_face.h"
+#include "tune_face.h"
 
 // Definitions of globals
 OSO_LCD lcd;
 Time time;
 Time prevTime;
+volatile bool faceNeedsQuickTick = false;
+volatile uint16_t counter0 = 0;
 
 // Local vars
 volatile uint16_t wakeEventMask = 0;
 
-// 0: time; 1: set; 2: tune
+// 0: time; 1: tune
 volatile uint8_t faceIx = 0;
 TimeFace timeFace;
-SetFace setFace;
-
-
-// ========= Buttons =======
-// Will move to its own file
-// =========================
-
-#define LONG_PRESS_TICKS 44
-#define REPEAT_TICKS 8
+TuneFace tuneFace;
 
 volatile bool timer0Running = false;
-volatile uint16_t counter0 = 0;
 volatile uint16_t btnModePressedAt = 0xffff;
 volatile uint16_t btnPlusPressedAt = 0xffff;
 volatile uint16_t btnMinusPressedAt = 0xffff;
+
+// Forward declarations of local functions
+void stopTimer0();
+void setupTimer0();
+void setupTimer2();
+void setupButtons();
+void setupLowPower();
+void goToSleep();
+
+void setup()
+{
+  digitalWrite(LED_PIN, LOW);
+  pinMode(LED_PIN, OUTPUT);
+
+  lcd.begin();
+  timeFace.enter();
+
+  stopTimer0();
+  setupButtons();
+  setupTimer2();
+  setupLowPower();
+
+  goToSleep();
+}
+
+void loop()
+{
+  uint16_t eventMask;
+  // While we handle one set of events, other interrupts might be setting other events
+  while (true)
+  {
+    cli();
+    eventMask = wakeEventMask;
+    wakeEventMask &= ~eventMask;
+    sei();
+    if (eventMask == 0)
+      break;
+
+    uint8_t ret;
+    if (faceIx == 0)
+    {
+      ret = timeFace.loop(eventMask);
+      if (ret == RET_NEXT)
+      {
+        faceIx = 1;
+        tuneFace.enter();
+      }
+    }
+    else if (faceIx == 1)
+    {
+      ret = tuneFace.loop(eventMask);
+      if (ret != RET_STAY)
+      {
+        faceIx = 0;
+        timeFace.enter();
+      }
+    }
+    if (faceNeedsQuickTick)
+      setupTimer0();
+  }
+  goToSleep();
+}
+
+void setupLowPower()
+{
+  // For low power in sleep:
+  // Disable BOD: Fuses do this
+  // Disable ADC
+  ADCSRA = 0;
+  // Disable WDT
+  cli();
+  asm("WDR");
+  MCUSR &= ~(1 << WDRF);
+  WDTCSR |= (1 << WDCE) | (1 << WDE);
+  WDTCSR = 0x00;
+  sei();
+}
+
+void setupTimer2()
+{
+  TCCR2B = 0;        // stop Timer 2
+  TIMSK2 = 0;        // disable Timer 2 interrupts
+  ASSR = (1 << AS2); // select asynchronous operation of Timer 2
+
+  // wait for TCN2UB and TCR2BUB to be cleared
+  while (ASSR & ((1 << TCN2UB) | (1 << TCR2BUB)))
+    ;
+
+  TCNT2 = 0;                          // clear Timer 2 counter
+  TCCR2A = (1 << WGM21);              // clear timer on compare match, no port output
+  TCCR2B = (1 << CS21) | (1 << CS22); // prescaler 256, interrupt enabled
+
+  // wait for TCN2UB and TCR2BUB to be cleared
+  while (ASSR & ((1 << TCN2UB) | (1 << TCR2BUB)))
+    ;
+
+  TIFR2 = 1 << OCF2A;   // clear compare match A flag
+  OCR2A = 127;          // reaches 128 once per second
+  TIMSK2 = 1 << OCIE2A; // enable compare match interrupt
+}
+
+ISR(TIMER2_COMPA_vect)
+{
+  prevTime = time;
+  time.tick();
+  wakeEventMask |= EVT_SECOND_TICK;
+}
+
+void goToSleep()
+{
+  // Disable TWI
+  TWCR = bit(TWEN) | bit(TWIE) | bit(TWEA) | bit(TWINT);
+
+  // set sleep mode: power save by default, but only idle if timer0 is alive
+  if (timer0Running)
+    SMCR = 0;
+  else
+    SMCR = (1 << SM1) + (1 << SM0);
+
+  cli();
+  SMCR |= (1 << SE); // enable sleep
+  sei();
+  asm("SLEEP");
+
+  // When back: disable sleep
+  SMCR &= ~(1 << SE);
+}
 
 void updateOneButton(volatile uint16_t *pressedAt, uint8_t pin, uint16_t downEventFlag)
 {
@@ -99,6 +219,7 @@ void stopTimer0()
   timer0Running = false;
   TCCR0B = 0; // Stop Timer 0
   TIMSK0 = 0; // Disable Timer 0 interrupts
+  counter0 = 0;
 }
 
 void setupTimer0()
@@ -123,7 +244,7 @@ ISR(TIMER0_COMPA_vect)
   ++counter0;
   bool stopTimer = updateButtons();
   // Faces that need the quick tick
-  if (stopTimer && faceIx == 0)
+  if (stopTimer && !faceNeedsQuickTick)
     stopTimer0();
   wakeEventMask |= EVT_QUICK_TICK;
 }
@@ -131,134 +252,6 @@ ISR(TIMER0_COMPA_vect)
 ISR(PCINT1_vect)
 {
   // If timer 0 is not running, start it
+  // We'll be reading button state in interrupt handler
   setupTimer0();
-}
-
-// END button functions
-// ================================================
-
-// Forward declarations of local functions
-void stopTimer0();
-void setupTimer2();
-void setupLowPower();
-void powerSave();
-
-void setup()
-{
-  digitalWrite(LED_PIN, LOW);
-  pinMode(LED_PIN, OUTPUT);
-
-  lcd.begin();
-  timeFace.enter();
-
-  stopTimer0();
-  setupButtons();
-
-  setupTimer2();
-  setupLowPower();
-
-  // Nightie
-  powerSave();
-}
-
-void loop()
-{
-  uint16_t eventMask;
-  // While we handle one set of events, other interrupts might be setting other events
-  while (true)
-  {
-    cli();
-    eventMask = wakeEventMask;
-    wakeEventMask &= ~eventMask;
-    sei();
-    if (eventMask == 0)
-      break;
-
-    uint8_t ret;
-    if (faceIx == 0)
-    {
-      ret = timeFace.loop(eventMask);
-      if (ret == RET_NEXT)
-      {
-        faceIx = 1;
-        setFace.enter();
-        setupTimer0();
-      }
-    }
-    else if (faceIx == 1)
-    {
-      ret = setFace.loop(eventMask);
-      if (ret != RET_STAY)
-      {
-        faceIx = 0;
-        timeFace.enter();
-      }
-    }
-  }
-  powerSave();
-}
-
-void setupLowPower()
-{
-  // For low power in sleep:
-  // Disable BOD: Fuses do this
-  // Disable ADC
-  ADCSRA = 0;
-  // Disable WDT
-  cli();
-  asm("WDR");
-  MCUSR &= ~(1 << WDRF);
-  WDTCSR |= (1 << WDCE) | (1 << WDE);
-  WDTCSR = 0x00;
-  sei();
-}
-
-void setupTimer2()
-{
-  TCCR2B = 0;        // stop Timer 2
-  TIMSK2 = 0;        // disable Timer 2 interrupts
-  ASSR = (1 << AS2); // select asynchronous operation of Timer 2
-
-  // wait for TCN2UB and TCR2BUB to be cleared
-  while (ASSR & ((1 << TCN2UB) | (1 << TCR2BUB)))
-    ;
-
-  TCNT2 = 0;                          // clear Timer 2 counter
-  TCCR2A = (1 << WGM21);              // clear timer on compare match, no port output
-  TCCR2B = (1 << CS21) | (1 << CS22); // prescaler 256, interrupt enabled
-
-  // wait for TCN2UB and TCR2BUB to be cleared
-  while (ASSR & ((1 << TCN2UB) | (1 << TCR2BUB)))
-    ;
-
-  TIFR2 = 1 << OCF2A;   // clear compare match A flag
-  OCR2A = 127;          // reaches 128 once per second
-  TIMSK2 = 1 << OCIE2A; // enable compare match interrupt
-}
-
-ISR(TIMER2_COMPA_vect)
-{
-  prevTime = time;
-  time.tick();
-  wakeEventMask |= EVT_SECOND_TICK;
-}
-
-void powerSave()
-{
-  // Disable TWI
-  TWCR = bit(TWEN) | bit(TWIE) | bit(TWEA) | bit(TWINT);
-
-  // set sleep mode: power save by default, but only idle if timer0 is alive
-  if (timer0Running)
-    SMCR = 0;
-  else
-    SMCR = (1 << SM1) + (1 << SM0);
-
-  cli();
-  SMCR |= (1 << SE); // enable sleep
-  sei();
-  asm("SLEEP");
-
-  // When back: disable sleep
-  SMCR &= ~(1 << SE);
 }
