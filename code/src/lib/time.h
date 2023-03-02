@@ -3,10 +3,10 @@
 
 struct Time
 {
-  volatile uint32_t totalSeconds = 0;
-  volatile uint8_t hour = 0;
-  volatile uint8_t min = 0;
-  volatile uint8_t sec = 0;
+  volatile uint32_t totalSeconds;
+  volatile uint8_t hour;
+  volatile uint8_t min;
+  volatile uint8_t sec;
 
   void tick();
 };

@@ -10,6 +10,7 @@ Time time;
 Time prevTime;
 volatile bool faceNeedsQuickTick = false;
 volatile uint16_t counter0 = 0;
+volatile uint8_t timer2Adjust = 0;
 
 // Local vars
 volatile uint16_t wakeEventMask = 0;
@@ -126,9 +127,39 @@ void setupTimer2()
 
 ISR(TIMER2_COMPA_vect)
 {
-  prevTime = time;
-  time.tick();
-  wakeEventMask |= EVT_SECOND_TICK;
+  bool advanceTime = true;
+  // When frequency correction is applied, it will be added to "adjust" here
+  int8_t adjust = timer2Adjust * 4;
+
+  if (adjust != 0)
+  {
+    // Note about fine adjustments by messing with counter
+    // To turn this into a 4-times-per-second timer, this is needed (verified):
+    // TCNT2 = 127 - (32 - 1);
+    // When setting a low counter value to shorten a second, the following
+    // turns this in to twice-per-second timer (verified):
+    // TCNT2 = 64
+
+    // If value is negative: our time is ahead: we're adding an extra delay before incrementing seconds
+    if (adjust < 0)
+    {
+      TCNT2 = 127 + adjust + 1;
+      advanceTime = false;
+    }
+    // Value is positive: our time is behind: we make next cycle shorter
+    else
+    {
+      TCNT2 = adjust;
+    }
+    timer2Adjust = 0;
+  }
+
+  if (advanceTime)
+  {
+    prevTime = time;
+    time.tick();
+    wakeEventMask |= EVT_SECOND_TICK;
+  }
 }
 
 void goToSleep()

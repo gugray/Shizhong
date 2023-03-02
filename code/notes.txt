@@ -1,6 +1,10 @@
 TO-DO
 =====================================
--- fine-tune by manipulating TCNT0
+OK fine-tune by manipulating TCNT0
+-- measure temp
+-- design & order board v1
+-- whole static correction shebang
+-- measure and eval green & red LED effect and current
 
 
 Batery capacity ballpark

@@ -1,4 +1,10 @@
+#ifndef UNIT_TEST
 #include <Arduino.h>
+#else
+#include <stddef.h>
+#include <stdint.h>
+#endif
+
 #include "time.h"
 
 void Time::tick()

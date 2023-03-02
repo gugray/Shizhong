@@ -16,6 +16,7 @@ extern const uint8_t digits[];
 #define OSO_INDICATOR_DATA    (0b00000010)
 #define OSO_INDICATOR_MOON    (0b00000001)
 #define OSO_INDICATOR_ALL     (0b11101111)
+#define OSO_SYMBOL_DOT        (0b00100000)
 
 class OSO_LCD
 {

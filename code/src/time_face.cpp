@@ -40,10 +40,13 @@ uint8_t TimeFace::loop(uint16_t event)
     return RET_STAY;
   }
 
+  // Evertying that's not a tick is user action: reset timout counter
+  if (!ISEVENT(EVT_QUICK_TICK) && !ISEVENT(EVT_SECOND_TICK))
+    timeoutStart = counter0;
+
   // Events on set screen
   if (ISEVENT(EVT_BTN_MODE_SHORT) || ISEVENT(EVT_BTN_MODE_LONG))
   {
-    timeoutStart = counter0;
     screen = (screen + 1) % 4;
     if (screen == 0)
     {
@@ -65,7 +68,6 @@ uint8_t TimeFace::loop(uint16_t event)
   }
   if (ISEVENT(EVT_BTN_MINUS_DOWN) || ISEVENT(EVT_BTN_MINUS_REPEAT))
   {
-    timeoutStart = counter0;
     if (screen == 1)
       time.hour = time.hour == 0 ? 23 : time.hour - 1;
     else if (screen == 2)
@@ -76,7 +78,6 @@ uint8_t TimeFace::loop(uint16_t event)
   }
   if (ISEVENT(EVT_BTN_PLUS_DOWN) || ISEVENT(EVT_BTN_PLUS_REPEAT))
   {
-    timeoutStart = counter0;
     if (screen == 1)
       time.hour = (time.hour + 1) % 24;
     else if (screen == 2)
@@ -88,7 +89,6 @@ uint8_t TimeFace::loop(uint16_t event)
   drawSetTime();
   return RET_STAY;
 }
-
 
 static void resetSecond()
 {
@@ -188,7 +188,7 @@ static void drawSetTime()
       buf[6] = digits[time.sec % 10];
     }
     // With decimal digit in front
-    buf[5] |= 0b00100000;
+    buf[5] |= OSO_SYMBOL_DOT;
   }
 
   // Flush if different
