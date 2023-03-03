@@ -1,7 +1,9 @@
 TO-DO
 =====================================
 OK fine-tune by manipulating TCNT0
--- measure temp
+OK measure temp
+-- faces neatly
+-- periodic temp measurement
 -- design & order board v1
 -- whole static correction shebang
 -- measure and eval green & red LED effect and current

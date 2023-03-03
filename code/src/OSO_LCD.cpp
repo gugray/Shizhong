@@ -34,10 +34,10 @@ bool OSO_LCD::begin()
 
 void OSO_LCD::show_partial(uint8_t pos, uint8_t length)
 {
-  uint8_t temp[7];
-  temp[0] = (pos - 1) * 2;
-  memcpy(temp + 1, this->buffer + pos, length);
-  _write(temp, length + 1);
+  uint8_t tmp[7];
+  tmp[0] = (pos - 1) * 2;
+  memcpy(tmp + 1, this->buffer + pos, length);
+  _write(tmp, length + 1);
 }
 
 void OSO_LCD::show(void)

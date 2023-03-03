@@ -1,16 +1,20 @@
 #include <Arduino.h>
 #include "globals.h"
 #include "events.h"
+#include "DS18B20.h"
 #include "time_face.h"
 #include "tune_face.h"
+#include "measure_face.h"
 
 // Definitions of globals
 OSO_LCD lcd;
 Time time;
 Time prevTime;
+volatile uint16_t lastMeasuredTemp;
 volatile bool faceNeedsQuickTick = false;
 volatile uint16_t counter0 = 0;
 volatile uint8_t timer2Adjust = 0;
+volatile uint8_t dsState = 0;
 
 // Local vars
 volatile uint16_t wakeEventMask = 0;
@@ -19,11 +23,15 @@ volatile uint16_t wakeEventMask = 0;
 volatile uint8_t faceIx = 0;
 TimeFace timeFace;
 TuneFace tuneFace;
+MeasureFace measureFace;
 
 volatile bool timer0Running = false;
 volatile uint16_t btnModePressedAt = 0xffff;
 volatile uint16_t btnPlusPressedAt = 0xffff;
 volatile uint16_t btnMinusPressedAt = 0xffff;
+
+// Space for temp sensor's scratchpad
+uint8_t dsData[9];
 
 // Forward declarations of local functions
 void stopTimer0();
@@ -32,6 +40,9 @@ void setupTimer2();
 void setupButtons();
 void setupLowPower();
 void goToSleep();
+void configureTempSensor();
+void startTempConversion();
+void readTemp();
 
 void setup()
 {
@@ -41,6 +52,7 @@ void setup()
   lcd.begin();
   timeFace.enter();
 
+  configureTempSensor();
   stopTimer0();
   setupButtons();
   setupTimer2();
@@ -51,21 +63,38 @@ void setup()
 
 void loop()
 {
-  uint16_t eventMask;
+  uint16_t event;
   // While we handle one set of events, other interrupts might be setting other events
   while (true)
   {
     cli();
-    eventMask = wakeEventMask;
-    wakeEventMask &= ~eventMask;
+    event = wakeEventMask;
+    wakeEventMask &= ~event;
     sei();
-    if (eventMask == 0)
+    if (event == 0)
       break;
+
+    // In SECOND_TICK, handle temp conversion
+    if (ISEVENT(EVT_SECOND_TICK))
+    {
+      // Conversion requested now, and none in progress yet
+      if (dsState == 0x01)
+      {
+        startTempConversion();
+        dsState = 0x02;
+      }
+      // Conversion in progress: finish it!
+      else if ((dsState & 0x02) != 0)
+      {
+        readTemp();
+        dsState = 0;
+      }
+    }
 
     uint8_t ret;
     if (faceIx == 0)
     {
-      ret = timeFace.loop(eventMask);
+      ret = timeFace.loop(event);
       if (ret == RET_NEXT)
       {
         faceIx = 1;
@@ -74,7 +103,21 @@ void loop()
     }
     else if (faceIx == 1)
     {
-      ret = tuneFace.loop(eventMask);
+      ret = tuneFace.loop(event);
+      if (ret == RET_HOME)
+      {
+        faceIx = 0;
+        timeFace.enter();
+      }
+      else if (ret == RET_NEXT)
+      {
+        faceIx = 2;
+        measureFace.enter();
+      }
+    }
+    else if (faceIx == 2)
+    {
+      ret = measureFace.loop(event);
       if (ret != RET_STAY)
       {
         faceIx = 0;
@@ -168,6 +211,7 @@ void goToSleep()
   TWCR = bit(TWEN) | bit(TWIE) | bit(TWEA) | bit(TWINT);
 
   // set sleep mode: power save by default, but only idle if timer0 is alive
+  // DBG
   if (timer0Running)
     SMCR = 0;
   else
@@ -285,4 +329,36 @@ ISR(PCINT1_vect)
   // If timer 0 is not running, start it
   // We'll be reading button state in interrupt handler
   setupTimer0();
+}
+
+void configureTempSensor()
+{
+  DS18B20::reset();
+  DS18B20::write(0xCC); // Skip ROM
+  DS18B20::write(0x4E); // Write scratchpad
+  DS18B20::write(0x00); // TH: unused
+  DS18B20::write(0x00); // TL: unused
+  DS18B20::write(0x20); // Config register for 10-bit resolution (gives us .25C)
+}
+
+void startTempConversion()
+{
+  DS18B20::reset();
+  DS18B20::write(0xCC); // Skip ROM
+  DS18B20::write(0x44); // Start convesion
+}
+
+void readTemp()
+{
+  DS18B20::reset();
+  DS18B20::write(0xCC); // Skip ROM
+  DS18B20::write(0xBE); // Read scratchpad
+  for (uint8_t i = 0; i < 9; i++)
+    dsData[i] = DS18B20::read();
+  // Convert the data to actual temperature
+  int16_t raw = (dsData[1] << 8) | dsData[0];
+  // Zero out lowest two bits, we're using 10-bit resolution
+  raw = raw & ~3;
+  // This is temp Celsius * 10
+  lastMeasuredTemp = raw * 5 / 8;
 }

@@ -13,8 +13,10 @@
 extern OSO_LCD lcd;
 extern Time time;
 extern Time prevTime;
+extern volatile uint16_t lastMeasuredTemp; // Temperature C * 10
 extern volatile bool faceNeedsQuickTick;
 extern volatile uint16_t counter0;
+extern volatile uint8_t dsState; // 0x01: conversion requested; 0x02: conversion in progress
 
 // When Timer 2 compare interrupt next runs, it will adjust counter by this much * 4
 // Used to fine-tune time  in 1/32 second increments
