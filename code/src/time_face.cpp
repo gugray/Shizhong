@@ -68,6 +68,7 @@ uint8_t TimeFace::loop(uint16_t event)
   }
   if (ISEVENT(EVT_BTN_MINUS_DOWN) || ISEVENT(EVT_BTN_MINUS_REPEAT))
   {
+    cli();
     if (screen == 1)
       time.hour = time.hour == 0 ? 23 : time.hour - 1;
     else if (screen == 2)
@@ -75,9 +76,11 @@ uint8_t TimeFace::loop(uint16_t event)
     else
       resetSecond();
     blinkCounter = BLINK_PERIOD / 2;
+    sei();
   }
   if (ISEVENT(EVT_BTN_PLUS_DOWN) || ISEVENT(EVT_BTN_PLUS_REPEAT))
   {
+    cli();
     if (screen == 1)
       time.hour = (time.hour + 1) % 24;
     else if (screen == 2)
@@ -85,6 +88,7 @@ uint8_t TimeFace::loop(uint16_t event)
     else
       resetSecond();
     blinkCounter = BLINK_PERIOD / 2;
+    sei();
   }
   drawSetTime();
   return RET_STAY;
@@ -95,6 +99,9 @@ static void resetSecond()
   time.sec = 0;
   TIFR2 = 1 << OCF2A; // clear compare match A flag
   TCNT2 = 0;          // clear Timer 2 counter
+
+  // If we mess with seconds here, can't calibrate the next time in tune_face
+  lastAdjustedAt = 0;
 }
 
 static void drawTime(bool forceRedraw)

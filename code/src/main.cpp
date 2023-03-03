@@ -2,28 +2,52 @@
 #include "globals.h"
 #include "events.h"
 #include "DS18B20.h"
+#include "persistence.h"
 #include "time_face.h"
 #include "tune_face.h"
 #include "measure_face.h"
+#include "lib/corrector.h"
 
-// Definitions of globals
+// Definitions of globals vvv
+// ==============================================
+
 OSO_LCD lcd;
 Time time;
 Time prevTime;
-volatile uint16_t lastMeasuredTemp;
+uint32_t lastAdjustedAt = 0;
+volatile uint32_t totalSeconds = 0;
+volatile int16_t periodStartTemp = 0x7fff;
+volatile int16_t latestMeasuredTemp;
 volatile bool faceNeedsQuickTick = false;
 volatile uint16_t counter0 = 0;
 volatile uint8_t timer2Adjust = 0;
 volatile uint8_t dsState = 0;
 
-// Local vars
+// Local vars vvv
+// ==============================================
+
 volatile uint16_t wakeEventMask = 0;
+volatile uint16_t periodCounter = 0;
+
+typedef void (*faceEnterFun)();
+typedef uint8_t (*faceLoopFun)(uint16_t);
 
 // 0: time; 1: tune
 volatile uint8_t faceIx = 0;
-TimeFace timeFace;
-TuneFace tuneFace;
-MeasureFace measureFace;
+
+const faceEnterFun enterFuns[] = {
+    TimeFace::enter,
+    TuneFace::enter,
+    MeasureFace::enter,
+};
+
+const faceLoopFun loopFuns[] = {
+    TimeFace::loop,
+    TuneFace::loop,
+    MeasureFace::loop,
+};
+
+const uint8_t nFaces = sizeof(enterFuns) / sizeof(faceEnterFun);
 
 volatile bool timer0Running = false;
 volatile uint16_t btnModePressedAt = 0xffff;
@@ -33,7 +57,9 @@ volatile uint16_t btnMinusPressedAt = 0xffff;
 // Space for temp sensor's scratchpad
 uint8_t dsData[9];
 
-// Forward declarations of local functions
+// Forward declarations of local functions vvv
+// ==============================================
+
 void stopTimer0();
 void setupTimer0();
 void setupTimer2();
@@ -44,13 +70,20 @@ void configureTempSensor();
 void startTempConversion();
 void readTemp();
 
+// Setup and loop: high-level control
+// ==============================================
+
 void setup()
 {
   digitalWrite(LED_PIN, LOW);
   pinMode(LED_PIN, OUTPUT);
 
+  Corrector::setStaticError(Persistence::loadStaticError());
+
   lcd.begin();
-  timeFace.enter();
+
+  // Call time face's enter at startup, so we have meaningful content on display immediately
+  enterFuns[0]();
 
   configureTempSensor();
   stopTimer0();
@@ -58,6 +91,7 @@ void setup()
   setupTimer2();
   setupLowPower();
 
+  dsState = 0x01; // Trigger a first temp measurement
   goToSleep();
 }
 
@@ -74,61 +108,43 @@ void loop()
     if (event == 0)
       break;
 
-    // In SECOND_TICK, handle temp conversion
+    // In SECOND_TICK, handle temp conversion if requested
     if (ISEVENT(EVT_SECOND_TICK))
     {
       // Conversion requested now, and none in progress yet
       if (dsState == 0x01)
       {
         startTempConversion();
-        dsState = 0x02;
+        dsState &= ~0x01;
+        dsState |= 0x02;
       }
       // Conversion in progress: finish it!
       else if ((dsState & 0x02) != 0)
       {
         readTemp();
-        dsState = 0;
+        dsState &= ~0x02;
       }
     }
 
-    uint8_t ret;
-    if (faceIx == 0)
+    uint8_t ret = loopFuns[faceIx](event);
+    if (ret == RET_NEXT)
     {
-      ret = timeFace.loop(event);
-      if (ret == RET_NEXT)
-      {
-        faceIx = 1;
-        tuneFace.enter();
-      }
+      faceIx = (faceIx + 1) % nFaces;
+      enterFuns[faceIx]();
     }
-    else if (faceIx == 1)
+    else if (ret == RET_HOME)
     {
-      ret = tuneFace.loop(event);
-      if (ret == RET_HOME)
-      {
-        faceIx = 0;
-        timeFace.enter();
-      }
-      else if (ret == RET_NEXT)
-      {
-        faceIx = 2;
-        measureFace.enter();
-      }
-    }
-    else if (faceIx == 2)
-    {
-      ret = measureFace.loop(event);
-      if (ret != RET_STAY)
-      {
-        faceIx = 0;
-        timeFace.enter();
-      }
+      faceIx = 0;
+      enterFuns[faceIx]();
     }
     if (faceNeedsQuickTick)
       setupTimer0();
   }
   goToSleep();
 }
+
+// All the machinery
+// ==============================================
 
 void setupLowPower()
 {
@@ -170,9 +186,24 @@ void setupTimer2()
 
 ISR(TIMER2_COMPA_vect)
 {
-  bool advanceTime = true;
-  // When frequency correction is applied, it will be added to "adjust" here
-  int8_t adjust = timer2Adjust * 4;
+  int8_t corrVal = 0;
+  // Every measured 10 minutes, measure temperature, and apply static and dynamic frequency corrections
+  periodCounter = (periodCounter + 1) % 600;
+  if (periodCounter == PERIOD_SECONDS - 2)
+  {
+    // 0x01 will kick off a conversion in main loop, which will finish one tick later
+    dsState = 0x01;
+  }
+  // Two ticks into the period we have the new temperature. Do the frequency correction stuff now.
+  else if (periodCounter == 0)
+  {
+    corrVal = Corrector::periodUpdate((periodStartTemp + latestMeasuredTemp) / 2);
+    periodStartTemp = latestMeasuredTemp;
+  }
+
+  // Beats we add or skip
+  int8_t adjust = timer2Adjust * 4 + corrVal;
+  bool advanceTime = true; // When adding extra beat, we'll only increase second in the next interrupt
 
   if (adjust != 0)
   {
@@ -201,6 +232,7 @@ ISR(TIMER2_COMPA_vect)
   {
     prevTime = time;
     time.tick();
+    ++totalSeconds;
     wakeEventMask |= EVT_SECOND_TICK;
   }
 }
@@ -211,7 +243,6 @@ void goToSleep()
   TWCR = bit(TWEN) | bit(TWIE) | bit(TWEA) | bit(TWINT);
 
   // set sleep mode: power save by default, but only idle if timer0 is alive
-  // DBG
   if (timer0Running)
     SMCR = 0;
   else
@@ -333,32 +364,42 @@ ISR(PCINT1_vect)
 
 void configureTempSensor()
 {
+  cli();
   DS18B20::reset();
   DS18B20::write(0xCC); // Skip ROM
   DS18B20::write(0x4E); // Write scratchpad
   DS18B20::write(0x00); // TH: unused
   DS18B20::write(0x00); // TL: unused
   DS18B20::write(0x20); // Config register for 10-bit resolution (gives us .25C)
+  sei();
 }
 
 void startTempConversion()
 {
+  cli();
   DS18B20::reset();
   DS18B20::write(0xCC); // Skip ROM
   DS18B20::write(0x44); // Start convesion
+  sei();
 }
 
 void readTemp()
 {
+  cli();
   DS18B20::reset();
   DS18B20::write(0xCC); // Skip ROM
   DS18B20::write(0xBE); // Read scratchpad
   for (uint8_t i = 0; i < 9; i++)
     dsData[i] = DS18B20::read();
+  sei();
   // Convert the data to actual temperature
   int16_t raw = (dsData[1] << 8) | dsData[0];
   // Zero out lowest two bits, we're using 10-bit resolution
   raw = raw & ~3;
   // This is temp Celsius * 10
-  lastMeasuredTemp = raw * 5 / 8;
+  latestMeasuredTemp = raw * 5 / 8;
+  // Very first time we measure, set period start temperatur too
+  // Later on this is Timer2's job (so interim user-triggered measurements don't overwrite it)
+  if (periodStartTemp == 0x7fff)
+    periodStartTemp = latestMeasuredTemp;
 }

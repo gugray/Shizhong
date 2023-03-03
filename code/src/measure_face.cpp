@@ -9,8 +9,7 @@ static void draw();
 
 void MeasureFace::enter()
 {
-  timeoutStart = (time.totalSeconds & 0xffff);
-  dsState |= 0x01; // Tell seconds timer to kick off temp conversion
+  timeoutStart = (totalSeconds & 0xffff);
   draw();
 }
 
@@ -20,9 +19,15 @@ uint8_t MeasureFace::loop(uint16_t event)
   {
     return RET_NEXT;
   }
+  if (ISEVENT(EVT_BTN_MODE_LONG))
+  {
+    timeoutStart = (totalSeconds & 0xffff);
+    dsState |= 0x01; // Kick off temp conversion. Main loop will handle this.
+    draw();
+  }
   if (ISEVENT(EVT_SECOND_TICK))
   {
-    uint16_t elapsed = (time.totalSeconds & 0xffff) - timeoutStart;
+    uint16_t elapsed = (totalSeconds & 0xffff) - timeoutStart;
     if (elapsed > TIMEOUT_SECONDS)
     {
       return RET_HOME;
@@ -47,7 +52,7 @@ static void draw()
   // Got a reading
   else
   {
-    uint16_t val = lastMeasuredTemp;
+    uint16_t val = latestMeasuredTemp;
     lcd.buffer[4] = digits[val % 10] | OSO_SYMBOL_DOT;
     val /= 10;
     lcd.buffer[3] = digits[val % 10];

@@ -4,6 +4,7 @@
 #include "OSO_LCD.h"
 #include "lib/time.h"
 
+#define PERIOD_SECONDS 600
 #define LONG_PRESS_TICKS 44
 #define REPEAT_TICKS 8
 #define BLINK_PERIOD 20
@@ -13,10 +14,15 @@
 extern OSO_LCD lcd;
 extern Time time;
 extern Time prevTime;
-extern volatile uint16_t lastMeasuredTemp; // Temperature C * 10
+extern uint32_t lastAdjustedAt;
+extern volatile uint32_t totalSeconds;
+extern volatile int16_t periodStartTemp; // Temperature C * 10
+extern volatile int16_t latestMeasuredTemp; // Temperature C * 10
 extern volatile bool faceNeedsQuickTick;
 extern volatile uint16_t counter0;
-extern volatile uint8_t dsState; // 0x01: conversion requested; 0x02: conversion in progress
+
+// 0x01: conversion requested; 0x02: conversion in progress
+extern volatile uint8_t dsState;
 
 // When Timer 2 compare interrupt next runs, it will adjust counter by this much * 4
 // Used to fine-tune time  in 1/32 second increments

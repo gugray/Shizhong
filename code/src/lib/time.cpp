@@ -9,7 +9,6 @@
 
 void Time::tick()
 {
-  ++totalSeconds;
   ++sec;
   if (sec == 60)
   {

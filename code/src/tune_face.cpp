@@ -2,6 +2,12 @@
 #include "tune_face.h"
 #include "events.h"
 #include "globals.h"
+#include "persistence.h"
+#include "lib/corrector.h"
+
+// If adjustment is larger than this, calculation for delta error would overflow
+#define MAX_ADJUSTMENT 687
+#define MAX_ERROR 9999
 
 // 0: finetune seconds
 static uint8_t screen;
@@ -9,41 +15,180 @@ static uint8_t buf[7];
 static int16_t tuneVal; // Current adjustment in 1/32 seconds
 static uint16_t timeoutStart;
 
+static uint8_t loopTune(uint16_t event);
+static uint8_t loopStaticError(uint16_t event);
+static uint8_t loopDeltaError(uint16_t event);
+
 static void drawTune();
+static void drawErrorValue(int16_t err);
+static void drawStaticError();
+static void drawDeltaError();
+
+static int32_t calcDeltaErr(int32_t elapsedSec);
+static uint32_t safeGetTotalSeconds();
 
 void TuneFace::enter()
 {
   screen = 0;
   tuneVal = 0;
-  timeoutStart = (time.totalSeconds & 0xffff);
+  timeoutStart = (totalSeconds & 0xffff);
   drawTune();
 }
 
 uint8_t TuneFace::loop(uint16_t event)
 {
-  // Events on tune screen
-  if (ISEVENT(EVT_BTN_MODE_SHORT))
+  // On all screens: time out if we have no correction
+  if (ISEVENT(EVT_SECOND_TICK) && tuneVal == 0 && (totalSeconds & 0xffff) - timeoutStart > TIMEOUT_SECONDS)
+    return RET_HOME;
+
+  // Events on different screens
+  if (screen == 0)
+    return loopTune(event);
+  else if (screen == 1)
+    return loopStaticError(event);
+  else
+    return loopDeltaError(event);
+  return RET_STAY;
+}
+
+static uint8_t loopStaticError(uint16_t event)
+{
+  if (ISEVENT(EVT_BTN_MODE_LONG) || ISEVENT(EVT_BTN_MODE_SHORT))
   {
-    return RET_NEXT;
+    screen = 2;
+    drawDeltaError();
+    return RET_STAY;
+  }
+  return RET_STAY;
+}
+
+static void drawStaticError()
+{
+  lcd.fill(false);
+
+  int16_t err = Corrector::getStaticError();
+  lcd.buffer[2] = 0b11010011; // E
+  drawErrorValue(err);
+
+  lcd.show();
+}
+
+static uint8_t loopDeltaError(uint16_t event)
+{
+  if (ISEVENT(EVT_BTN_MODE_LONG) || ISEVENT(EVT_BTN_MODE_SHORT))
+  {
+    screen = 0;
+    drawTune();
+    return RET_STAY;
   }
   if (ISEVENT(EVT_SECOND_TICK))
   {
-    if (tuneVal == 0 && (time.totalSeconds & 0xffff) - timeoutStart > TIMEOUT_SECONDS)
+    drawDeltaError();
+  }
+  if (ISEVENT(EVT_BTN_PLUS_LONG))
+  {
+    // Long PLUS updates static error, and leaves tune face
+    // If that's not possible, it has no effect
+    uint32_t tsec = safeGetTotalSeconds();
+    int32_t elapsedSec = tsec - lastAdjustedAt;
+    int32_t deltaErr = calcDeltaErr(elapsedSec);
+    int32_t newErr = Corrector::getStaticError() + deltaErr;
+    if (lastAdjustedAt != 0 && newErr <= MAX_ERROR && newErr >= -MAX_ERROR && elapsedSec >= 6 * 60 * 60)
     {
+      Corrector::setStaticError(newErr);
+      Persistence::saveStaticError(newErr);
+      lastAdjustedAt = tsec;
       return RET_HOME;
     }
-    drawTune();
   }
+  if (ISEVENT(EVT_BTN_MINUS_LONG))
+  {
+    // Long MINUS plus leaves tune face without updating static error
+    // But we remember time of this adjustment
+    lastAdjustedAt = safeGetTotalSeconds();
+    return RET_HOME;
+  }
+  return RET_STAY;
+}
+
+static uint32_t safeGetTotalSeconds()
+{
+  uint32_t res;
+  cli();
+  res = totalSeconds;
+  sei();
+  return res;
+}
+
+static int32_t calcDeltaErr(int32_t elapsedSec)
+{
+  return tuneVal * 3125000 / (elapsedSec - tuneVal / 32);
+}
+
+static void drawDeltaError()
+{
+  lcd.fill(false);
+
+  lcd.buffer[2] = 0b00011111; // d
+
+  int32_t elapsedSec = safeGetTotalSeconds() - lastAdjustedAt;
+  int32_t deltaErr = calcDeltaErr(elapsedSec);
+  int32_t newErr = Corrector::getStaticError() + deltaErr;
+  // Less than 6h elapsed, or delta would yeet us beyond maximum error
+  // Or first time adjusting
+  if (lastAdjustedAt == 0 || newErr > MAX_ERROR || newErr < -MAX_ERROR || elapsedSec < 6 * 60 * 60)
+  {
+    lcd.buffer[4] = 0b00000010;
+    lcd.buffer[5] = 0b00000010 | OSO_SYMBOL_DOT;
+    lcd.buffer[6] = 0b00000010;
+  }
+  else
+    drawErrorValue(deltaErr);
+
+  lcd.show();
+}
+
+static void drawErrorValue(int16_t err)
+{
+  if (err < 0)
+  {
+    lcd.buffer[2] |= OSO_SYMBOL_DOT;
+    err = -err;
+  }
+  lcd.buffer[6] = digits[err % 10];
+  err /= 10;
+  lcd.buffer[5] = digits[err % 10] | OSO_SYMBOL_DOT;
+  err /= 10;
+  lcd.buffer[4] = digits[err % 10];
+  err /= 10;
+  if (err != 0)
+    lcd.buffer[3] = digits[err % 10];
+}
+
+static uint8_t loopTune(uint16_t event)
+{
+  if (tuneVal == 0 && ISEVENT(EVT_BTN_MODE_SHORT))
+    return RET_NEXT;
+
+  if (ISEVENT(EVT_BTN_MODE_LONG) || (tuneVal != 0 && ISEVENT(EVT_BTN_MODE_SHORT)))
+  {
+    screen = 1;
+    drawStaticError();
+    return RET_STAY;
+  }
+
+  if (ISEVENT(EVT_SECOND_TICK))
+    drawTune();
   // Everything that's not a tick is user action: reset timeout counter
   else
-    timeoutStart = (time.totalSeconds & 0xffff);
+    timeoutStart = (totalSeconds & 0xffff);
 
   int8_t tnDiff = 0;
   if (ISEVENT(EVT_BTN_MINUS_DOWN) || ISEVENT(EVT_BTN_MINUS_REPEAT))
     tnDiff -= 1;
   if (ISEVENT(EVT_BTN_PLUS_DOWN) || ISEVENT(EVT_BTN_PLUS_REPEAT))
     tnDiff += 1;
-  if (tnDiff != 0)
+  if (tnDiff != 0 && tuneVal + tnDiff >= -MAX_ADJUSTMENT && tuneVal + tnDiff <= MAX_ADJUSTMENT)
   {
     tuneVal += tnDiff;
     cli();
@@ -51,7 +196,6 @@ uint8_t TuneFace::loop(uint16_t event)
     sei();
     drawTune();
   }
-
   return RET_STAY;
 }
 
