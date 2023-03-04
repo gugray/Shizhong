@@ -7,7 +7,7 @@
 
 #include "corrector.h"
 
-#define MILLION 1000000
+#define HUNDRED_MILLION 100000000
 
 static int16_t staticError = 0;
 static int32_t accumulatedDrift = 0;
@@ -28,14 +28,14 @@ int8_t Corrector::periodUpdate(int16_t avgTemp)
 {
   accumulatedDrift += ((int32_t)staticError) * 768;
   int8_t adj = 0;
-  while (accumulatedDrift > MILLION)
+  while (accumulatedDrift > HUNDRED_MILLION)
   {
-    accumulatedDrift -= MILLION;
+    accumulatedDrift -= HUNDRED_MILLION;
     --adj;
   }
-  while (accumulatedDrift < -MILLION)
+  while (accumulatedDrift < -HUNDRED_MILLION)
   {
-    accumulatedDrift += MILLION;
+    accumulatedDrift += HUNDRED_MILLION;
     ++adj;
   }
   return adj;

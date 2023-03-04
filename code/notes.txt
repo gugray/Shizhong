@@ -9,7 +9,8 @@ OK whole static correction shebang
    OK omit too-short time
    OK store and load from EEPROM
 OK critical section around totalSeconds?
--- verify current draw
+OK verify current draw
+-- BUG: set time screen times out on seconds
 -- design & order board v1
 -- measure and eval green & red LED effect and current
 -- temperature-based dynamic corrections

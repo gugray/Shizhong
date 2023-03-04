@@ -122,7 +122,7 @@ static uint32_t safeGetTotalSeconds()
 
 static int32_t calcDeltaErr(int32_t elapsedSec)
 {
-  return tuneVal * 3125000 / (elapsedSec - tuneVal / 32);
+  return -tuneVal * 3125000 / (elapsedSec - tuneVal / 32);
 }
 
 static void drawDeltaError()
