@@ -27,16 +27,17 @@ static void drawDeltaError();
 static int32_t calcDeltaErr(int32_t elapsedSec);
 static uint32_t safeGetTotalSeconds();
 
-void TuneFace::enter()
-{
-  screen = 0;
-  tuneVal = 0;
-  timeoutStart = (totalSeconds & 0xffff);
-  drawTune();
-}
-
 uint8_t TuneFace::loop(uint16_t event)
 {
+  if (ISEVENT(EVT_ENTER_FACE))
+  {
+    screen = 0;
+    tuneVal = 0;
+    timeoutStart = (totalSeconds & 0xffff);
+    drawTune();
+    return RET_STAY;
+  }
+
   // On all screens: time out if we have no correction
   if (ISEVENT(EVT_SECOND_TICK) && tuneVal == 0 && (totalSeconds & 0xffff) - timeoutStart > TIMEOUT_SECONDS)
     return RET_HOME;

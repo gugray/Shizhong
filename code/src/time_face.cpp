@@ -13,14 +13,15 @@ static void drawTime(bool forceRedraw);
 static void drawSetTime();
 static void resetSecond();
 
-void TimeFace::enter()
-{
-  screen = 0;
-  drawTime(true);
-}
-
 uint8_t TimeFace::loop(uint16_t event)
 {
+  if (ISEVENT(EVT_ENTER_FACE))
+  {
+    screen = 0;
+    drawTime(true);
+    return RET_STAY;
+  }
+
   // Events on time screen
   if (screen == 0)
   {

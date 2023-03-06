@@ -29,17 +29,10 @@ volatile uint8_t dsState = 0;
 volatile uint16_t wakeEventMask = 0;
 volatile uint16_t periodCounter = 0;
 
-typedef void (*faceEnterFun)();
 typedef uint8_t (*faceLoopFun)(uint16_t);
 
 // 0: time; 1: tune
 volatile uint8_t faceIx = 0;
-
-const faceEnterFun enterFuns[] = {
-    TimeFace::enter,
-    TuneFace::enter,
-    MeasureFace::enter,
-};
 
 const faceLoopFun loopFuns[] = {
     TimeFace::loop,
@@ -47,7 +40,7 @@ const faceLoopFun loopFuns[] = {
     MeasureFace::loop,
 };
 
-const uint8_t nFaces = sizeof(enterFuns) / sizeof(faceEnterFun);
+const uint8_t nFaces = sizeof(loopFuns) / sizeof(faceLoopFun);
 
 volatile bool timer0Running = false;
 volatile uint16_t btnModePressedAt = 0xffff;
@@ -83,7 +76,7 @@ void setup()
   lcd.begin();
 
   // Call time face's enter at startup, so we have meaningful content on display immediately
-  enterFuns[0]();
+  loopFuns[0](EVT_ENTER_FACE);
 
   configureTempSensor();
   stopTimer0();
@@ -130,12 +123,12 @@ void loop()
     if (ret == RET_NEXT)
     {
       faceIx = (faceIx + 1) % nFaces;
-      enterFuns[faceIx]();
+      loopFuns[faceIx](EVT_ENTER_FACE);
     }
     else if (ret == RET_HOME)
     {
       faceIx = 0;
-      enterFuns[faceIx]();
+      loopFuns[faceIx](EVT_ENTER_FACE);
     }
     if (faceNeedsQuickTick)
       setupTimer0();

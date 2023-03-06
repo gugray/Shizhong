@@ -3,7 +3,6 @@
 
 struct TuneFace
 {
-  static void enter();
   static uint8_t loop(uint16_t event);
 };
 

@@ -10,10 +10,13 @@ OK whole static correction shebang
    OK store and load from EEPROM
 OK critical section around totalSeconds?
 OK verify current draw
+OK Fix extra beat issue in period
+OK Time face: only loop function; ENTER event
+   6712 -> 6730 DANG
 -- BUG: set time screen times out on seconds
--- design & order board v1
--- measure and eval green & red LED effect and current
 -- temperature-based dynamic corrections
+OK design & order board v1
+-- measure and eval green & red LED effect and current
 
 To consider:
 -- LED light button somewhere?

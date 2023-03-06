@@ -7,14 +7,14 @@ static uint16_t timeoutStart;
 
 static void draw();
 
-void MeasureFace::enter()
-{
-  timeoutStart = (totalSeconds & 0xffff);
-  draw();
-}
-
 uint8_t MeasureFace::loop(uint16_t event)
 {
+  if (ISEVENT(EVT_ENTER_FACE))
+  {
+    timeoutStart = (totalSeconds & 0xffff);
+    draw();
+    return RET_STAY;
+  }
   if (ISEVENT(EVT_BTN_MODE_SHORT))
   {
     return RET_NEXT;
