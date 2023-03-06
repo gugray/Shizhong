@@ -16,8 +16,8 @@ extern Time time;
 extern Time prevTime;
 extern uint32_t lastAdjustedAt;
 extern volatile uint32_t totalSeconds;
-extern volatile int16_t periodStartTemp; // Temperature C * 10
-extern volatile int16_t latestMeasuredTemp; // Temperature C * 10
+extern volatile int16_t periodStartTemp; // Temperature C * 20
+extern volatile int16_t latestMeasuredTemp; // Temperature C * 20
 extern volatile bool faceNeedsQuickTick;
 extern volatile uint16_t counter0;
 
@@ -28,6 +28,8 @@ extern volatile uint8_t dsState;
 // Used to fine-tune time in 1/32 second increments from UI
 // Used to shorten/lengthen second for frequency correction
 extern volatile uint8_t timer2Adjust;
+
+void drawTemperature(int16_t temp); // C * 20
 
 #define LED_PIN 3
 #define BTN_MODE_PIN 14

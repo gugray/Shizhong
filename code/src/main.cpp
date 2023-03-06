@@ -72,6 +72,9 @@ void setup()
   pinMode(LED_PIN, OUTPUT);
 
   Corrector::setStaticError(Persistence::loadStaticError());
+  int16_t t0 = Persistence::loadCrystalT0();
+  if (t0 != 0)
+    Corrector::setCrystalT0(t0);
 
   lcd.begin();
 
@@ -390,10 +393,27 @@ void readTemp()
   int16_t raw = (dsData[1] << 8) | dsData[0];
   // Zero out lowest two bits, we're using 10-bit resolution
   raw = raw & ~3;
-  // This is temp Celsius * 10
-  latestMeasuredTemp = raw * 5 / 8;
-  // Very first time we measure, set period start temperatur too
+  // This is temp Celsius * 20
+  latestMeasuredTemp = raw * 5 / 4;
+  // Very first time we measure, set period start temperature too
   // Later on this is Timer2's job (so interim user-triggered measurements don't overwrite it)
   if (periodStartTemp == 0x7fff)
     periodStartTemp = latestMeasuredTemp;
+}
+
+void drawTemperature(int16_t temp)
+{
+  lcd.fill(false);
+  lcd.buffer[5] = 0b11001010; // degree
+  lcd.buffer[6] = 0b11010001; // C
+
+  uint16_t val = temp / 2;
+  lcd.buffer[4] = digits[val % 10] | OSO_SYMBOL_DOT;
+  val /= 10;
+  lcd.buffer[3] = digits[val % 10];
+  val /= 10;
+  if (val > 0)
+    lcd.buffer[2] = digits[val % 10];
+
+  lcd.show();
 }

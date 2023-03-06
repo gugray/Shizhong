@@ -12,11 +12,15 @@ OK critical section around totalSeconds?
 OK verify current draw
 OK Fix extra beat issue in period
 OK Time face: only loop function; ENTER event
-   6712 -> 6730 DANG
--- BUG: set time screen times out on seconds
--- temperature-based dynamic corrections
+OK BUG: set time screen times out on seconds
+   OK timeout in seconds, not the quick timer
+OK temperature-based dynamic corrections
 OK design & order board v1
+OK new screen on set: T0
+OK don't re-measure temp on measure face
 -- measure and eval green & red LED effect and current
+-- battery voltage screen
+?? calibration length screen?
 
 To consider:
 -- LED light button somewhere?

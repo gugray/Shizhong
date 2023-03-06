@@ -1,5 +1,6 @@
 extern "C"
 {
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -26,9 +27,17 @@ void test_overflow_diff()
   TEST_ASSERT_EQUAL(3, diff);
 }
 
+void test_float_cast()
+{
+  uint16_t a = 10;
+  uint16_t res = round(a * 1.1);
+  TEST_ASSERT_EQUAL(11, res);
+}
+
 int main(void)
 {
   UNITY_BEGIN();
   RUN_TEST(test_overflow_diff);
+  RUN_TEST(test_float_cast);
   return UNITY_END();
 }

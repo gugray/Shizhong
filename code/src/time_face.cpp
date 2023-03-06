@@ -9,6 +9,8 @@ static uint8_t buf[7];
 static uint8_t blinkCounter;
 static uint16_t timeoutStart;
 
+static void resetTimeout();
+
 static void drawTime(bool forceRedraw);
 static void drawSetTime();
 static void resetSecond();
@@ -23,6 +25,7 @@ uint8_t TimeFace::loop(uint16_t event)
   }
 
   // Events on time screen
+  // ----------------------------------
   if (screen == 0)
   {
     if (ISEVENT(EVT_SECOND_TICK))
@@ -32,7 +35,7 @@ uint8_t TimeFace::loop(uint16_t event)
       screen = 1;
       faceNeedsQuickTick = true;
       blinkCounter = 0;
-      timeoutStart = counter0;
+      resetTimeout();
     }
     if (ISEVENT(EVT_BTN_MODE_SHORT))
     {
@@ -41,13 +44,13 @@ uint8_t TimeFace::loop(uint16_t event)
     return RET_STAY;
   }
 
-  // Evertying that's not a tick is user action: reset timout counter
-  if (!ISEVENT(EVT_QUICK_TICK) && !ISEVENT(EVT_SECOND_TICK))
-    timeoutStart = counter0;
+  // Events on set screens from here on
+  // ----------------------------------
 
-  // Events on set screen
+
   if (ISEVENT(EVT_BTN_MODE_SHORT) || ISEVENT(EVT_BTN_MODE_LONG))
   {
+    resetTimeout();
     screen = (screen + 1) % 4;
     if (screen == 0)
     {
@@ -59,7 +62,11 @@ uint8_t TimeFace::loop(uint16_t event)
   if (ISEVENT(EVT_QUICK_TICK))
   {
     blinkCounter = (blinkCounter + 1) % BLINK_PERIOD;
-    if (counter0 - timeoutStart > TIMEOUT_TICKS)
+  }
+  if (ISEVENT(EVT_SECOND_TICK))
+  {
+    uint16_t elapsed = (totalSeconds & 0xffff) - timeoutStart;
+    if (elapsed > TIMEOUT_SECONDS)
     {
       screen = 0;
       drawTime(true);
@@ -67,8 +74,10 @@ uint8_t TimeFace::loop(uint16_t event)
       return RET_STAY;
     }
   }
+
   if (ISEVENT(EVT_BTN_MINUS_DOWN) || ISEVENT(EVT_BTN_MINUS_REPEAT))
   {
+    resetTimeout();
     cli();
     if (screen == 1)
       time.hour = time.hour == 0 ? 23 : time.hour - 1;
@@ -81,6 +90,7 @@ uint8_t TimeFace::loop(uint16_t event)
   }
   if (ISEVENT(EVT_BTN_PLUS_DOWN) || ISEVENT(EVT_BTN_PLUS_REPEAT))
   {
+    resetTimeout();
     cli();
     if (screen == 1)
       time.hour = (time.hour + 1) % 24;
@@ -93,6 +103,11 @@ uint8_t TimeFace::loop(uint16_t event)
   }
   drawSetTime();
   return RET_STAY;
+}
+
+static void resetTimeout()
+{
+    timeoutStart = (totalSeconds & 0xffff);
 }
 
 static void resetSecond()

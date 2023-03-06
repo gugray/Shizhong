@@ -6,6 +6,9 @@ struct Corrector
   static int16_t getStaticError();
   static void setStaticError(int16_t err);
 
+  static int16_t getCrystalT0();
+  static void setCrystalT0(int16_t t0);
+
   // Updates the accumulated drift after the last 600-tick period
   // Applies the effect of the static error and the temperature-dependent error
   // avgTem: temperature in Celsius * 100, e.g., 2130 for 21.3 C

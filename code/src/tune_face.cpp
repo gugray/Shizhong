@@ -18,11 +18,15 @@ static uint16_t timeoutStart;
 static uint8_t loopTune(uint16_t event);
 static uint8_t loopStaticError(uint16_t event);
 static uint8_t loopDeltaError(uint16_t event);
+static uint8_t loopT0(uint16_t event);
 
 static void drawTune();
 static void drawErrorValue(int16_t err);
 static void drawStaticError();
 static void drawDeltaError();
+static void drawT0();
+
+static void resetTimeout();
 
 static int32_t calcDeltaErr(int32_t elapsedSec);
 static uint32_t safeGetTotalSeconds();
@@ -33,8 +37,8 @@ uint8_t TuneFace::loop(uint16_t event)
   {
     screen = 0;
     tuneVal = 0;
-    timeoutStart = (totalSeconds & 0xffff);
     drawTune();
+    resetTimeout();
     return RET_STAY;
   }
 
@@ -47,9 +51,16 @@ uint8_t TuneFace::loop(uint16_t event)
     return loopTune(event);
   else if (screen == 1)
     return loopStaticError(event);
-  else
+  else if (screen == 2)
     return loopDeltaError(event);
+  else
+    return loopT0(event);
   return RET_STAY;
+}
+
+static void resetTimeout()
+{
+    timeoutStart = (totalSeconds & 0xffff);
 }
 
 static uint8_t loopStaticError(uint16_t event)
@@ -58,6 +69,7 @@ static uint8_t loopStaticError(uint16_t event)
   {
     screen = 2;
     drawDeltaError();
+    resetTimeout();
     return RET_STAY;
   }
   return RET_STAY;
@@ -78,8 +90,9 @@ static uint8_t loopDeltaError(uint16_t event)
 {
   if (ISEVENT(EVT_BTN_MODE_LONG) || ISEVENT(EVT_BTN_MODE_SHORT))
   {
-    screen = 0;
-    drawTune();
+    screen = 3;
+    drawT0();
+    resetTimeout();
     return RET_STAY;
   }
   if (ISEVENT(EVT_SECOND_TICK))
@@ -88,6 +101,7 @@ static uint8_t loopDeltaError(uint16_t event)
   }
   if (ISEVENT(EVT_BTN_PLUS_LONG))
   {
+    resetTimeout();
     // Long PLUS updates static error, and leaves tune face
     // If that's not possible, it has no effect
     uint32_t tsec = safeGetTotalSeconds();
@@ -104,6 +118,7 @@ static uint8_t loopDeltaError(uint16_t event)
   }
   if (ISEVENT(EVT_BTN_MINUS_LONG))
   {
+    resetTimeout();
     // Long MINUS plus leaves tune face without updating static error
     // But we remember time of this adjustment
     lastAdjustedAt = safeGetTotalSeconds();
@@ -164,6 +179,34 @@ static void drawErrorValue(int16_t err)
   err /= 10;
   if (err != 0)
     lcd.buffer[3] = digits[err % 10];
+}
+
+static uint8_t loopT0(uint16_t event)
+{
+  if (ISEVENT(EVT_BTN_MODE_LONG) || ISEVENT(EVT_BTN_MODE_SHORT))
+  {
+    screen = 0;
+    drawTune();
+    return RET_STAY;
+  }
+  if (ISEVENT(EVT_BTN_PLUS_DOWN) || ISEVENT(EVT_BTN_MINUS_DOWN))
+  {
+    int16_t t = Corrector::getCrystalT0();
+    if (ISEVENT(EVT_BTN_PLUS_DOWN))
+      t += 2;
+    else
+      t -= 2;
+    Corrector::setCrystalT0(t);
+    Persistence::saveCrystalT0(t);
+    drawT0();
+    resetTimeout();
+  }
+  return RET_STAY;
+}
+
+static void drawT0()
+{
+  drawTemperature(Corrector::getCrystalT0());
 }
 
 static uint8_t loopTune(uint16_t event)
