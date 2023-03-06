@@ -24,8 +24,9 @@ extern volatile uint16_t counter0;
 // 0x01: conversion requested; 0x02: conversion in progress
 extern volatile uint8_t dsState;
 
-// When Timer 2 compare interrupt next runs, it will adjust counter by this much * 4
-// Used to fine-tune time  in 1/32 second increments
+// When Timer 2 compare interrupt next runs, it will adjust counter by this many beats
+// Used to fine-tune time in 1/32 second increments from UI
+// Used to shorten/lengthen second for frequency correction
 extern volatile uint8_t timer2Adjust;
 
 #define LED_PIN 3

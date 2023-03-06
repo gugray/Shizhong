@@ -192,7 +192,7 @@ static uint8_t loopTune(uint16_t event)
   {
     tuneVal += tnDiff;
     cli();
-    timer2Adjust += tnDiff;
+    timer2Adjust += tnDiff * 4;
     sei();
     drawTune();
   }

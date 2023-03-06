@@ -186,26 +186,9 @@ void setupTimer2()
 
 ISR(TIMER2_COMPA_vect)
 {
-  int8_t corrVal = 0;
-  // Every measured 10 minutes, measure temperature, and apply static and dynamic frequency corrections
-  periodCounter = (periodCounter + 1) % 600;
-  if (periodCounter == PERIOD_SECONDS - 2)
-  {
-    // 0x01 will kick off a conversion in main loop, which will finish one tick later
-    dsState = 0x01;
-  }
-  // Two ticks into the period we have the new temperature. Do the frequency correction stuff now.
-  else if (periodCounter == 0)
-  {
-    corrVal = Corrector::periodUpdate((periodStartTemp + latestMeasuredTemp) / 2);
-    periodStartTemp = latestMeasuredTemp;
-  }
-
-  // Beats we add or skip
-  int8_t adjust = timer2Adjust * 4 + corrVal;
-  bool advanceTime = true; // When adding extra beat, we'll only increase second in the next interrupt
-
-  if (adjust != 0)
+  // Shorten or lengthen second if requested
+  bool advanceTime = true; // When adding extra beats, we'll only increase second in the next interrupt
+  if (timer2Adjust != 0)
   {
     // Note about fine adjustments by messing with counter
     // To turn this into a 4-times-per-second timer, this is needed (verified):
@@ -215,25 +198,43 @@ ISR(TIMER2_COMPA_vect)
     // TCNT2 = 64
 
     // If value is negative: our time is ahead: we're adding an extra delay before incrementing seconds
-    if (adjust < 0)
+    if (timer2Adjust < 0)
     {
-      TCNT2 = 127 + adjust + 1;
+      TCNT2 = 127 + timer2Adjust + 1;
       advanceTime = false;
     }
     // Value is positive: our time is behind: we make next cycle shorter
     else
     {
-      TCNT2 = adjust;
+      TCNT2 = timer2Adjust;
     }
     timer2Adjust = 0;
   }
 
-  if (advanceTime)
+  if (!advanceTime)
+    return;
+
+  // Update time
+  prevTime = time;
+  time.tick();
+  ++totalSeconds;
+
+  // Tell the main loop we have a TICK
+  wakeEventMask |= EVT_SECOND_TICK;
+
+  // Every measured 10 minutes, measure temperature, and apply static and dynamic frequency corrections
+  // Kick off conversion two ticks before period's end
+  periodCounter = (periodCounter + 1) % 600;
+  if (periodCounter == PERIOD_SECONDS - 2)
   {
-    prevTime = time;
-    time.tick();
-    ++totalSeconds;
-    wakeEventMask |= EVT_SECOND_TICK;
+    // 0x01 will kick off a conversion in main loop, which will finish one tick later
+    dsState = 0x01;
+  }
+  // At the period's start we have the new temperature. Do the frequency correction stuff now.
+  else if (periodCounter == 0)
+  {
+    timer2Adjust += Corrector::periodUpdate((periodStartTemp + latestMeasuredTemp) / 2);
+    periodStartTemp = latestMeasuredTemp;
   }
 }
 
