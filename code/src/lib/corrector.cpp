@@ -9,7 +9,6 @@
 #include "corrector.h"
 
 #define CRYSTAL_K -0.035
-#define CRYSTAL_K_192 -6.72
 #define MILLION 1000000
 
 static int16_t staticError = 0;
@@ -49,7 +48,8 @@ int8_t Corrector::periodUpdate(int16_t avgTemp)
 
   int32_t a = (crystalT0 - avgTemp);
   a *= a;
-  int32_t dynDrift = round(a * CRYSTAL_K_192);
+  int32_t dynDrift = round(a * (CRYSTAL_K * 192.0F));
+  // 192 is 768 * 100 / (20 * 20)
 
   accumulatedDrift += ((int32_t)staticError) * 768 + dynDrift;
 
