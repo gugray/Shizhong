@@ -31,7 +31,8 @@ extern volatile uint8_t timer2Adjust;
 
 void drawTemperature(int16_t temp); // C * 20
 
-#define LED_PIN 3
+//#define LED_PIN 3
+#define LED_PIN 9
 #define BTN_MODE_PIN 14
 #define BTN_PLUS_PIN 17
 #define BTN_MINUS_PIN 16
