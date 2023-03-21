@@ -31,7 +31,7 @@ volatile uint16_t periodCounter = 0;
 
 typedef uint8_t (*faceLoopFun)(uint16_t);
 
-// 0: time; 1: tune
+// 0: time; 1: tune; 2: measure
 volatile uint8_t faceIx = 0;
 
 const faceLoopFun loopFuns[] = {
@@ -401,19 +401,11 @@ void readTemp()
     periodStartTemp = latestMeasuredTemp;
 }
 
-void drawTemperature(int16_t temp)
+uint32_t safeGetTotalSeconds()
 {
-  lcd.fill(false);
-  lcd.buffer[5] = 0b11001010; // degree
-  lcd.buffer[6] = 0b11010001; // C
-
-  uint16_t val = temp / 2;
-  lcd.buffer[4] = digits[val % 10] | OSO_SYMBOL_DOT;
-  val /= 10;
-  lcd.buffer[3] = digits[val % 10];
-  val /= 10;
-  if (val > 0)
-    lcd.buffer[2] = digits[val % 10];
-
-  lcd.show();
+  uint32_t res;
+  cli();
+  res = totalSeconds;
+  sei();
+  return res;
 }

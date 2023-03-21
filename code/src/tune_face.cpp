@@ -18,18 +18,15 @@ static uint16_t timeoutStart;
 static uint8_t loopTune(uint16_t event);
 static uint8_t loopStaticError(uint16_t event);
 static uint8_t loopDeltaError(uint16_t event);
-static uint8_t loopT0(uint16_t event);
 
 static void drawTune();
 static void drawErrorValue(int16_t err);
 static void drawStaticError();
 static void drawDeltaError();
-static void drawT0();
 
 static void resetTimeout();
 
 static int32_t calcDeltaErr(int32_t elapsedSec);
-static uint32_t safeGetTotalSeconds();
 
 uint8_t TuneFace::loop(uint16_t event)
 {
@@ -51,10 +48,8 @@ uint8_t TuneFace::loop(uint16_t event)
     return loopTune(event);
   else if (screen == 1)
     return loopStaticError(event);
-  else if (screen == 2)
-    return loopDeltaError(event);
   else
-    return loopT0(event);
+    return loopDeltaError(event);
   return RET_STAY;
 }
 
@@ -90,8 +85,8 @@ static uint8_t loopDeltaError(uint16_t event)
 {
   if (ISEVENT(EVT_BTN_MODE_LONG) || ISEVENT(EVT_BTN_MODE_SHORT))
   {
-    screen = 3;
-    drawT0();
+    screen = 0;
+    drawTune();
     resetTimeout();
     return RET_STAY;
   }
@@ -127,15 +122,6 @@ static uint8_t loopDeltaError(uint16_t event)
   return RET_STAY;
 }
 
-static uint32_t safeGetTotalSeconds()
-{
-  uint32_t res;
-  cli();
-  res = totalSeconds;
-  sei();
-  return res;
-}
-
 static int32_t calcDeltaErr(int32_t elapsedSec)
 {
   return -tuneVal * 3125000 / (elapsedSec - tuneVal / 32);
@@ -168,7 +154,7 @@ static void drawErrorValue(int16_t err)
 {
   if (err < 0)
   {
-    lcd.buffer[2] |= OSO_SYMBOL_DOT;
+    lcd.buffer[2] |= OSO_SYMBOL_DOT; // This is MINUS for first digit
     err = -err;
   }
   lcd.buffer[6] = digits[err % 10];
@@ -181,34 +167,6 @@ static void drawErrorValue(int16_t err)
     lcd.buffer[3] = digits[err % 10];
 }
 
-static uint8_t loopT0(uint16_t event)
-{
-  if (ISEVENT(EVT_BTN_MODE_LONG) || ISEVENT(EVT_BTN_MODE_SHORT))
-  {
-    screen = 0;
-    drawTune();
-    return RET_STAY;
-  }
-  if (ISEVENT(EVT_BTN_PLUS_DOWN) || ISEVENT(EVT_BTN_MINUS_DOWN))
-  {
-    int16_t t = Corrector::getCrystalT0();
-    if (ISEVENT(EVT_BTN_PLUS_DOWN))
-      t += 2;
-    else
-      t -= 2;
-    Corrector::setCrystalT0(t);
-    Persistence::saveCrystalT0(t);
-    drawT0();
-    resetTimeout();
-  }
-  return RET_STAY;
-}
-
-static void drawT0()
-{
-  drawTemperature(Corrector::getCrystalT0());
-}
-
 static uint8_t loopTune(uint16_t event)
 {
   if (tuneVal == 0 && ISEVENT(EVT_BTN_MODE_SHORT))
@@ -218,6 +176,7 @@ static uint8_t loopTune(uint16_t event)
   {
     screen = 1;
     drawStaticError();
+    resetTimeout();
     return RET_STAY;
   }
 
@@ -225,7 +184,7 @@ static uint8_t loopTune(uint16_t event)
     drawTune();
   // Everything that's not a tick is user action: reset timeout counter
   else
-    timeoutStart = (totalSeconds & 0xffff);
+    resetTimeout();
 
   int8_t tnDiff = 0;
   if (ISEVENT(EVT_BTN_MINUS_DOWN) || ISEVENT(EVT_BTN_MINUS_REPEAT))
@@ -260,15 +219,16 @@ static void drawTune()
     buf[2] |= OSO_SYMBOL_DOT; // Minus sign is "dot" before first digit
     tn = -tuneVal;
   }
-  if (tn >= 100)
-    buf[2] |= digits[tn / 100];
-  if (tn >= 10)
-  {
-    if (tn >= 100)
-      tn = tn - 100 * (tn / 100);
-    buf[3] = digits[tn / 10];
-  }
+
   buf[4] = digits[tn % 10];
+  uint8_t tnn = tn / 10;
+  if (tnn != 0)
+  {
+    buf[3] = digits[tnn % 10];
+    tnn /= 10;
+    if (tnn != 0)
+      buf[2] |= digits[tnn];
+  }
 
   // Flush if different
   if (memcmp(buf, lcd.buffer, 7) != 0)

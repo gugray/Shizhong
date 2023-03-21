@@ -29,7 +29,8 @@ extern volatile uint8_t dsState;
 // Used to shorten/lengthen second for frequency correction
 extern volatile uint8_t timer2Adjust;
 
-void drawTemperature(int16_t temp); // C * 20
+// Returns copy to totalSeconds from within no-interrupt guard
+uint32_t safeGetTotalSeconds();
 
 //#define LED_PIN 3
 #define LED_PIN 9
